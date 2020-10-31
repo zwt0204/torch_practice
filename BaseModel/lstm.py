@@ -11,6 +11,8 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 import pickle
 from torch import optim
+import numpy as np
+import re
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,7 +25,7 @@ LOG_BATCH_NUM = 50  # 日志打印频率
 VOCAB_SIZE = 6630
 
 # test
-# MODEL_PATH_RNN = '../model/RNN.pth'  # rnn模型位置
+MODEL_PATH_RNN = '../model/011.pth'  # rnn模型位置
 
 
 class RNN(nn.Module):
@@ -31,8 +33,10 @@ class RNN(nn.Module):
     def __init__(self, vocab_size, embedding_size, hidden_size, num_layers):
         super(RNN, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_size)
-        self.rnn = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers, bidirectional=True)
-        self.output = nn.Linear(hidden_size*2, vocab_size)
+        # self.rnn = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers, bidirectional=True)
+        self.rnn = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers)
+        self.output = nn.Linear(hidden_size, vocab_size)
+        # self.output = nn.Linear(hidden_size*2, vocab_size)
 
     def forward(self, x):
         x = self.embedding(x)
@@ -64,7 +68,7 @@ def train():
     # x_seq是[[1, 5, ....], [0, 5, ...], [22, 3, ...]]
     # 定义训练批处理数据
     trainloader = torch.utils.data.DataLoader(
-        dataset=DatasetRNN(x_seq[:-1000], y_seq[:-1000]),
+        dataset=DatasetRNN(x_seq[-20000:-1000], y_seq[-20000:-1000]),
         batch_size=BATCH_SIZE, shuffle=True)
 
     testloader = torch.utils.data.DataLoader(
@@ -112,13 +116,50 @@ def train():
                 _, predicted = torch.max(outputs.data, 1)
                 total += y_seq_batch.size(0)
                 correct += (predicted == y_seq_batch).sum()
-            # print('第%d个epoch的识别准确率为：%d%%' % (epoch + 1, torch.floor_divide(correct, total)))
             print('第%d个epoch的识别准确率为：%f' % (epoch + 1, correct.__float__() / total))
         torch.save(net.state_dict(), '%s/%03d.pth' % ('../model', epoch + 1))
 
 
+def test():
+    with open("../data/tokenizer.pkl", 'rb') as f:
+        tokenizer = pickle.load(f)
+    e_index = tokenizer.word_index['e']
+
+    net = RNN(VOCAB_SIZE, 300, 300, 1).to(device)
+    checkpoint = torch.load(MODEL_PATH_RNN)
+    net.load_state_dict(checkpoint)
+
+    while True:
+        print('\n请输入文本，在此基础上作诗。不输入则随机开始，quit离开！\n')
+        text = input('输入：')
+        if text == 'quit':
+            break
+        elif text == '':
+            text = np.random.choice(list(tokenizer.index_word.values()))
+
+        while True:
+            x_seq_batch = tokenizer.texts_to_sequences(texts=[text])
+            x_seq_batch = torch.LongTensor(x_seq_batch).to(device)
+            with torch.no_grad():
+                outputs = net(x_seq_batch)
+            predicted = nn.Softmax(dim=0)(outputs.data.cpu()[-1])
+            predicted = np.random.choice(np.arange(len(predicted)), p=predicted.numpy())
+            if predicted not in [0, e_index]:
+                text += tokenizer.index_word[predicted]
+            else:
+                break
+            if len(text) >= 10:
+                break
+
+        text_list = re.findall(pattern='[^。？！]*[。？！]', string=text)
+        print('创作完成：\n')
+        for i in text_list:
+            print(i)
+        # print('text:', text)
+
+
 if __name__ == '__main__':
     train()
-
+    # test()
 
 
