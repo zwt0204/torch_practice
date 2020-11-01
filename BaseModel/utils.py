@@ -10,6 +10,8 @@ import torch
 from collections import Counter
 from torch.utils.data import Dataset
 import os
+import numpy as np
+import collections
 
 
 # Define Dataset class
@@ -33,9 +35,6 @@ class Dataset_(Dataset):
         return data
 
     def load_words(self):
-        # train_df = pd.read_csv('/Users/zhangweitao/Downloads/zwt/torch_practice/data/jokes.csv')
-        # text = train_df['Joke'].str.cat(sep=' ')
-        # return text.split(' ')
         text = []
         with open('../data/jay.txt', 'r', encoding='utf8') as f:
             for line in f.readlines():

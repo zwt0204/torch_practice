@@ -76,6 +76,9 @@ def train(dataset, model, args):
 
             print({'epoch': epoch, 'batch': batch, 'loss': loss.item()})
 
+    torch.save(model, '../model/model.pkl')
+    # model = torch.load('../model/model.pkl')
+
 
 # Define a 'predict' function
 def predict(dataset, model, text, next_words=10):
@@ -98,7 +101,7 @@ def predict(dataset, model, text, next_words=10):
 
 # Execute the defined functions
 parser = argparse.ArgumentParser()
-parser.add_argument('--max-epochs', type=int, default=5)
+parser.add_argument('--max-epochs', type=int, default=1)
 parser.add_argument('--batch-size', type=int, default=256)
 parser.add_argument('--sequence-length', type=int, default=10)
 args = parser.parse_args()
