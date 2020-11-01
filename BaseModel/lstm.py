@@ -4,162 +4,107 @@
 @file: lstm.py
 @author: zwt
 @time: 2020/10/30 15:26
-@desc:https://github.com/renjunxiang/Poetry_Generate_PyTorch/tree/master/data
+@desc:
 """
+import argparse
 import torch
-import torch.nn as nn
-from torch.utils.data import Dataset
-import pickle
-from torch import optim
 import numpy as np
-import re
+from torch import nn, optim
+from torch.utils.data import DataLoader
+from BaseModel.utils import Dataset_
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+class Model(nn.Module):
+    def __init__(self, dataset):
+        super(Model, self).__init__()
+        self.lstm_size = 128
+        self.embedding_dim = 128
+        self.num_layers = 1
 
-# train
-EPOCH = 50
-BATCH_SIZE = 64
-LR = 0.001  # 学习率
-LOG_BATCH_NUM = 50  # 日志打印频率
-VOCAB_SIZE = 6630
+        n_vocab = len(dataset.unique_words)
 
-# test
-MODEL_PATH_RNN = '../model/011.pth'  # rnn模型位置
+        self.embedding = nn.Embedding(
 
+            num_embeddings=n_vocab,
+            embedding_dim=self.embedding_dim,
+        )
 
-class RNN(nn.Module):
+        self.lstm = nn.LSTM(
 
-    def __init__(self, vocab_size, embedding_size, hidden_size, num_layers):
-        super(RNN, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_size)
-        # self.rnn = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers, bidirectional=True)
-        self.rnn = nn.LSTM(embedding_size, hidden_size, num_layers=num_layers)
-        self.output = nn.Linear(hidden_size, vocab_size)
-        # self.output = nn.Linear(hidden_size*2, vocab_size)
+            input_size=self.lstm_size,
+            hidden_size=self.lstm_size,
+            num_layers=self.num_layers,
+            dropout=0.2,
+        )
 
-    def forward(self, x):
-        x = self.embedding(x)
-        out, (_, _) = self.rnn(x)
-        x = self.output(out)
-        x = x.view(-1, x.size()[-1])
-        return x
+        self.fc = nn.Linear(self.lstm_size, n_vocab)
 
+    def forward(self, x, prev_state):
+        embed = self.embedding(x)
+        output, state = self.lstm(embed, prev_state)
+        logits = self.fc(output)
 
-# 定义数据读取方式
-class DatasetRNN(Dataset):
-    def __init__(self, x_seq, y_seq):
-        self.x_seq = x_seq
-        self.y_seq = y_seq
+        return logits, state
 
-    def __getitem__(self, index):
-        return self.x_seq[index], self.y_seq[index]
-
-    def __len__(self):
-        return len(self.x_seq)
+    def init_state(self, sequence_length):
+        return (torch.zeros(self.num_layers, sequence_length, self.lstm_size),
+                torch.zeros(self.num_layers, sequence_length, self.lstm_size))
 
 
-def train():
-    with open('../data/x_seq.pkl', 'rb') as f:
-        x_seq = pickle.load(f)
-    with open('../data/y_seq.pkl', 'rb') as f:
-        y_seq = pickle.load(f)
+# Define a 'train' function
+def train(dataset, model, args):
+    model.train()
 
-    # x_seq是[[1, 5, ....], [0, 5, ...], [22, 3, ...]]
-    # 定义训练批处理数据
-    trainloader = torch.utils.data.DataLoader(
-        dataset=DatasetRNN(x_seq[-20000:-1000], y_seq[-20000:-1000]),
-        batch_size=BATCH_SIZE, shuffle=True)
-
-    testloader = torch.utils.data.DataLoader(
-        dataset=DatasetRNN(x_seq[-1000:], y_seq[-1000:]),
-        batch_size=BATCH_SIZE, shuffle=True)
-
-    # 定义损失函数loss function和优化方式
-    net = RNN(VOCAB_SIZE, 300, 300, 1).to(device)
-    # net = NET_RNN()
+    dataloader = DataLoader(dataset, batch_size=args.batch_size)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR, weight_decay=0.0005)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
-    for epoch in range(EPOCH):
-        sum_loss = 0.0
-        # 数据读取
-        for i, data in enumerate(trainloader):
-            x_seq_batch, y_seq_batch = data
-            x_seq_batch, y_seq_batch = x_seq_batch.to(device), y_seq_batch.to(device)
-            y_seq_batch = y_seq_batch.flatten()
+    for epoch in range(args.max_epochs):
+        state_h, state_c = model.init_state(args.sequence_length)
 
-            # 梯度清零
+        for batch, (x, y) in enumerate(dataloader):
             optimizer.zero_grad()
 
-            outputs = net(x_seq_batch)
-            loss = criterion(outputs, y_seq_batch)
+            y_pred, (state_h, state_c) = model(x, (state_h, state_c))
+            loss = criterion(y_pred.transpose(1, 2), y)
+
+            state_h = state_h.detach()
+            state_c = state_c.detach()
+
             loss.backward()
             optimizer.step()
 
-            # 每训练LOG_BATCH_NUM个batch打印一次平均loss
-            sum_loss += loss.item()
-            if i % LOG_BATCH_NUM == LOG_BATCH_NUM - 1:
-                print('[%d, %d] loss: %.03f'
-                      % (epoch + 1, i + 1, sum_loss / LOG_BATCH_NUM))
-                sum_loss = 0.0
-
-        # 每跑完一次epoch测试一下准确率
-        with torch.no_grad():
-            correct = 0
-            total = 0
-            for data in testloader:
-                x_seq_batch, y_seq_batch = data
-                x_seq_batch, y_seq_batch = x_seq_batch.to(device), y_seq_batch.to(device)
-                y_seq_batch = y_seq_batch.flatten()
-                outputs = net(x_seq_batch)
-                _, predicted = torch.max(outputs.data, 1)
-                total += y_seq_batch.size(0)
-                correct += (predicted == y_seq_batch).sum()
-            print('第%d个epoch的识别准确率为：%f' % (epoch + 1, correct.__float__() / total))
-        torch.save(net.state_dict(), '%s/%03d.pth' % ('../model', epoch + 1))
+            print({'epoch': epoch, 'batch': batch, 'loss': loss.item()})
 
 
-def test():
-    with open("../data/tokenizer.pkl", 'rb') as f:
-        tokenizer = pickle.load(f)
-    e_index = tokenizer.word_index['e']
+# Define a 'predict' function
+def predict(dataset, model, text, next_words=10):
+    model.eval()
 
-    net = RNN(VOCAB_SIZE, 300, 300, 1).to(device)
-    checkpoint = torch.load(MODEL_PATH_RNN)
-    net.load_state_dict(checkpoint)
+    words = text.split(' ')
+    state_h, state_c = model.init_state(len(words))
 
-    while True:
-        print('\n请输入文本，在此基础上作诗。不输入则随机开始，quit离开！\n')
-        text = input('输入：')
-        if text == 'quit':
-            break
-        elif text == '':
-            text = np.random.choice(list(tokenizer.index_word.values()))
+    for i in range(0, next_words):
+        x = torch.tensor([[dataset.word_to_index[w] for w in words[i:]]])
+        y_pred, (state_h, state_c) = model(x, (state_h, state_c))
 
-        while True:
-            x_seq_batch = tokenizer.texts_to_sequences(texts=[text])
-            x_seq_batch = torch.LongTensor(x_seq_batch).to(device)
-            with torch.no_grad():
-                outputs = net(x_seq_batch)
-            predicted = nn.Softmax(dim=0)(outputs.data.cpu()[-1])
-            predicted = np.random.choice(np.arange(len(predicted)), p=predicted.numpy())
-            if predicted not in [0, e_index]:
-                text += tokenizer.index_word[predicted]
-            else:
-                break
-            if len(text) >= 10:
-                break
+        last_word_logits = y_pred[0][-1]
+        p = torch.nn.functional.softmax(last_word_logits, dim=0).detach().numpy()
+        word_index = np.random.choice(len(last_word_logits), p=p)
+        words.append(dataset.index_to_word[word_index])
 
-        text_list = re.findall(pattern='[^。？！]*[。？！]', string=text)
-        print('创作完成：\n')
-        for i in text_list:
-            print(i)
-        # print('text:', text)
+    return ' '.join(words)
 
 
-if __name__ == '__main__':
-    train()
-    # test()
+# Execute the defined functions
+parser = argparse.ArgumentParser()
+parser.add_argument('--max-epochs', type=int, default=5)
+parser.add_argument('--batch-size', type=int, default=256)
+parser.add_argument('--sequence-length', type=int, default=10)
+args = parser.parse_args()
 
+dataset = Dataset_(args)
+model = Model(dataset)
 
+train(dataset, model, args)
+print(predict(dataset, model, text='你'))
