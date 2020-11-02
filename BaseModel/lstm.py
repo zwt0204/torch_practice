@@ -14,30 +14,30 @@ from torch.utils.data import DataLoader
 from BaseModel.utils import Dataset_
 
 
+HIDDEN_SIZE = 128
+EMBEDDING = 128
+
+
 class Model(nn.Module):
     def __init__(self, dataset):
         super(Model, self).__init__()
-        self.lstm_size = 128
-        self.embedding_dim = 128
         self.num_layers = 1
 
         n_vocab = len(dataset.unique_words)
 
         self.embedding = nn.Embedding(
-
             num_embeddings=n_vocab,
-            embedding_dim=self.embedding_dim,
+            embedding_dim=EMBEDDING,
         )
 
         self.lstm = nn.LSTM(
-
-            input_size=self.lstm_size,
-            hidden_size=self.lstm_size,
+            input_size=EMBEDDING,
+            hidden_size=HIDDEN_SIZE,
             num_layers=self.num_layers,
             dropout=0.2,
         )
 
-        self.fc = nn.Linear(self.lstm_size, n_vocab)
+        self.fc = nn.Linear(HIDDEN_SIZE, n_vocab)
 
     def forward(self, x, prev_state):
         embed = self.embedding(x)
