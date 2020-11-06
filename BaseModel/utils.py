@@ -10,8 +10,6 @@ import torch
 from collections import Counter
 from torch.utils.data import Dataset
 import os
-import numpy as np
-import collections
 
 
 # Define Dataset class
@@ -36,9 +34,10 @@ class Dataset_(Dataset):
 
     def load_words(self):
         text = []
-        with open('../data/jay.txt', 'r', encoding='utf8') as f:
+        with open('../data/poem.txt', 'r', encoding='utf8') as f:
             for line in f.readlines():
-                text.extend(line.strip().split())
+                # text.extend(line.strip().split())
+                text.extend(list(line.strip()))
         return text
 
     def get_unique_words(self):

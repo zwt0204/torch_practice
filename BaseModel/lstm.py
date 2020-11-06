@@ -47,8 +47,8 @@ class Model(nn.Module):
         return logits, state
 
     def init_state(self, sequence_length):
-        return (torch.zeros(self.num_layers, sequence_length, self.lstm_size),
-                torch.zeros(self.num_layers, sequence_length, self.lstm_size))
+        return (torch.zeros(self.num_layers, sequence_length, EMBEDDING),
+                torch.zeros(self.num_layers, sequence_length, EMBEDDING))
 
 
 # Define a 'train' function
@@ -99,15 +99,17 @@ def predict(dataset, model, text, next_words=10):
     return ' '.join(words)
 
 
-# Execute the defined functions
-parser = argparse.ArgumentParser()
-parser.add_argument('--max-epochs', type=int, default=1)
-parser.add_argument('--batch-size', type=int, default=256)
-parser.add_argument('--sequence-length', type=int, default=10)
-args = parser.parse_args()
+if __name__ == '__main__':
 
-dataset = Dataset_(args)
-model = Model(dataset)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--max-epochs', type=int, default=1)
+    parser.add_argument('--batch-size', type=int, default=256)
+    parser.add_argument('--sequence-length', type=int, default=10)
+    args = parser.parse_args()
 
-train(dataset, model, args)
-print(predict(dataset, model, text='你'))
+    dataset = Dataset_(args)
+    model = Model(dataset)
+
+    train(dataset, model, args)
+    # model = torch.load('../model/model.pkl')
+    print(predict(dataset, model, text='秋'))
